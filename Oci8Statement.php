@@ -1,9 +1,10 @@
 <?php
+
 namespace Intersvyaz\Pdo;
 
+use OCILob;
 use PDO;
 use PDOStatement;
-use OCI_Lob;
 
 /**
  * Oci8 Statement class to mimic the interface of the PDOStatement class
@@ -19,49 +20,49 @@ class Oci8Statement extends PDOStatement
      */
     private $sth;
     /**
-     * @var \Intersvyaz\Pdo\Oci8 PDO Oci8 driver
+     * @var Oci8 PDO Oci8 driver
      */
-    private $connection;
+    private Oci8 $connection;
     /**
-     * @var boolean flag to convert LOB to string or not
+     * @var bool flag to convert LOB to string or not
      */
-    private $returnLobs = true;
+    private bool $returnLobs = true;
     /**
      * @var array Statement options
      */
-    private $options = [];
+    private array $options = [];
     /**
      * @var int Fetch mode selected via setFetchMode()
      */
-    private $fetchStyle = PDO::ATTR_DEFAULT_FETCH_MODE;
+    private int $fetchStyle = PDO::ATTR_DEFAULT_FETCH_MODE;
     /**
      * @var int Column number for PDO::FETCH_COLUMN fetch mode
      */
-    private $fetchColno = 0;
+    private int $fetchColno = 0;
     /**
      * @var string Class name for PDO::FETCH_CLASS fetch mode
      */
-    private $fetchClassName = '\stdClass';
+    private string $fetchClassName = '\stdClass';
     /**
      * @var array Constructor arguments for PDO::FETCH_CLASS
      */
-    private $fetchCtorargs = [];
+    private array $fetchCtorargs = [];
     /**
-     * @var object Object reference for PDO::FETCH_INTO fetch mode
+     * @var ?object Object reference for PDO::FETCH_INTO fetch mode
      */
-    private $fetchIntoObject;
+    private ?object $fetchIntoObject;
     /**
-     * @var OCI_Lob[] Lob object, when need lob->save after oci_execute.
+     * @var OCILob[] Lob object, when need lob->save after oci_execute.
      */
-    private $saveLobs = [];
+    private array $saveLobs = [];
     /**
-     * @var OCI_Lob[] Lob object, when need lob->write after oci_bind_by_name.
+     * @var OCILob[] Lob object, when need lob->write after oci_bind_by_name.
      */
-    private $writeLobs = [];
+    private array $writeLobs = [];
     /**
      * @var array Array of param value, which binded in bindParam as lob.
      */
-    private $lobsValue = [];
+    private array $lobsValue = [];
 
     /**
      * Constructor
@@ -73,7 +74,6 @@ class Oci8Statement extends PDOStatement
      */
     public function __construct($sth, Oci8 $connection, array $options = [])
     {
-
         if (strtolower(get_resource_type($sth)) !== 'oci8 statement') {
             throw new Oci8Exception(
                 'Resource expected of type oci8 statement; '
@@ -88,12 +88,12 @@ class Oci8Statement extends PDOStatement
     /**
      * Executes a prepared statement
      *
-     * @param array $inputParams An array of values with as many elements as
+     * @param array|null $inputParams An array of values with as many elements as
      *   there are bound parameters in the SQL statement being executed.
-     * @throws Oci8Exception
      * @return bool TRUE on success or FALSE on failure
+     * @throws Oci8Exception
      */
-    public function execute($inputParams = null)
+    public function execute(array $inputParams = null): bool
     {
         $mode = OCI_COMMIT_ON_SUCCESS;
 
@@ -117,7 +117,7 @@ class Oci8Statement extends PDOStatement
 
         if (count($this->writeLobs) > 0) {
             foreach ($this->writeLobs as $lobName => $lob) {
-                $type = $lob['type'] == Oci8::PARAM_BLOB ? OCI_TEMP_BLOB : OCI_TEMP_CLOB;
+                $type = $lob['type'] == OCI_B_BLOB ? OCI_TEMP_BLOB : OCI_TEMP_CLOB;
                 $lob['object']->writetemporary($this->lobsValue[$lobName], $type);
             }
         }
@@ -161,7 +161,7 @@ class Oci8Statement extends PDOStatement
      *   fetch type. In all cases, FALSE is returned on failure.
      * @todo Implement cursorOrientation and cursorOffset
      */
-    public function fetch($fetchStyle = null, $cursorOrientation = PDO::FETCH_ORI_NEXT, $cursorOffset = 0)
+    public function fetch(?int $fetchStyle = null, int $cursorOrientation = PDO::FETCH_ORI_NEXT, int $cursorOffset = 0): mixed
     {
         $fetchStyle = $fetchStyle ?: $this->fetchStyle;
 
@@ -204,15 +204,18 @@ class Oci8Statement extends PDOStatement
     /**
      * Set the default fetch mode for this statement
      *
-     * @param int|null $mode The fetch mode must be one of the
-     *   PDO::FETCH_* constants.
-     * @param mixed|null $modeArg Column number, class name or object.
-     * @param array|null $ctorArgs Constructor arguments.
+     * @param int $mode <p>
+     *                     The fetch mode must be one of the PDO::FETCH_* constants.
+     *                     </p>
+     * @param null $className
+     * @param ?string ...$params <p> Constructor arguments. </p>
+     * @return bool <b>TRUE</b> on success or <b>FALSE</b> on failure.
      * @throws Oci8Exception
-     * @return bool TRUE on success or FALSE on failure.
      */
-    public function setFetchMode($mode, $modeArg = null, array $ctorArgs = [])
+    public function setFetchMode($mode, $className = null, ...$params): bool
     {
+        $modeArg = $params;
+
         $this->fetchStyle = $mode;
         $this->fetchClassName = '\stdClass';
         $this->fetchCtorargs = [];
@@ -226,7 +229,6 @@ class Oci8Statement extends PDOStatement
                 if ($modeArg) {
                     $this->fetchClassName = $modeArg;
                 }
-                $this->fetchCtorargs = $ctorArgs;
                 break;
             case PDO::FETCH_INTO:
                 if (!is_object($modeArg)) {
@@ -245,11 +247,11 @@ class Oci8Statement extends PDOStatement
     /**
      * Returns a single column from the next row of a result set
      *
-     * @param int $colNumber 0-indexed number of the column you wish to retrieve
+     * @param int|null $colNumber 0-indexed number of the column you wish to retrieve
      *   from the row. If no value is supplied, it fetches the first column.
      * @return string Returns a single column in the next row of a result set.
      */
-    public function fetchColumn($colNumber = 0)
+    public function fetchColumn(?int $colNumber = 0)
     {
         $rs = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS + ($this->returnLobs ? OCI_RETURN_LOBS : 0));
         if (is_array($rs) && array_key_exists((int)$colNumber, $rs)) {
@@ -265,20 +267,20 @@ class Oci8Statement extends PDOStatement
     /**
      * Returns an array containing all of the result set rows
      *
-     * @param int $fetchMode Controls the contents of the returned array as
+     * @param int|null $mode Controls the contents of the returned array as
      *   documented in PDOStatement::fetch.
-     * @param mixed $fetchArgument This argument has a different meaning
+     * @param mixed $fetch_argument This argument has a different meaning
      *   depending on the value of the fetchMode parameter.
-     * @param array $ctorArgs [optional] Arguments of custom class constructor
+     * @param mixed $args [optional] Arguments of custom class constructor
      *   when the fetch_style parameter is PDO::FETCH_CLASS.
      * @return array Array containing all of the remaining rows in the result
      *   set. The array represents each row as either an array of column values
      *   or an object with properties corresponding to each column name.
      */
-    public function fetchAll($fetchMode = null, $fetchArgument = null, $ctorArgs = null)
+    public function fetchAll(?int $mode = PDO::FETCH_OBJ, mixed $fetch_argument = null, ...$args): array
     {
-        if ($fetchMode !== null) {
-            $this->setFetchMode($fetchMode, $fetchArgument, $ctorArgs ?: []);
+        if ($mode !== null) {
+            $this->setFetchMode($mode, $args);
         }
 
         $results = [];
@@ -292,19 +294,19 @@ class Oci8Statement extends PDOStatement
     /**
      * Fetches the next row and returns it as an object
      *
-     * @param string $className
-     * @param array $ctorArgs
-     * @return mixed
+     * @param string|null $class
+     * @param array $constructorArgs
+     * @return object|false
      */
-    public function fetchObject($className = "stdClass", $ctorArgs = null)
+    public function fetchObject(?string $class = "stdClass", array $constructorArgs = []): object|false
     {
-        $className = $className ?: $this->fetchClassName;
+        $className = $class ?: $this->fetchClassName;
 
         $toLowercase = ($this->getAttribute(PDO::ATTR_CASE) === PDO::CASE_LOWER);
         $rs = $this->fetchArray(OCI_ASSOC + OCI_RETURN_NULLS, $toLowercase);
-        if ($ctorArgs) {
+        if ($constructorArgs) {
             $reflectionClass = new \ReflectionClass($className);
-            $object = $reflectionClass->newInstanceArgs($ctorArgs);
+            $object = $reflectionClass->newInstanceArgs($constructorArgs);
         } else {
             $object = new $className();
         }
@@ -315,7 +317,7 @@ class Oci8Statement extends PDOStatement
     /**
      * Binds a parameter to the specified variable name
      *
-     * @param string $parameter Parameter identifier. For a prepared statement
+     * @param string|int $parameter Parameter identifier. For a prepared statement
      *   using named placeholders, this will be a parameter name of the form
      *   :name. For a prepared statement using question mark placeholders, this
      *   will be the 1-indexed position of the parameter.
@@ -332,18 +334,19 @@ class Oci8Statement extends PDOStatement
      *   datatypes and length.
      */
     public function bindParam(
-        $parameter,
-        &$variable,
-        $dataType = PDO::PARAM_STR,
-        $maxLength = -1,
-        $options = [Oci8::LOB_SQL]
-    ) {
+        int|string $parameter,
+        mixed      &$variable,
+        int        $dataType = PDO::PARAM_STR,
+        int        $maxLength = -1,
+        mixed      $options = [Oci8::LOB_SQL]
+    ): bool
+    {
         if (is_numeric($parameter)) {
             throw new Oci8Exception("bind numerical params has not been implemented");
         }
 
         if ($dataType == PDO::PARAM_LOB) {
-            $dataType = Oci8::PARAM_BLOB;
+            $dataType = OCI_B_BLOB;
         }
 
         //Adapt the type
@@ -364,8 +367,7 @@ class Oci8Statement extends PDOStatement
                 $oci_type = SQLT_CHR;
                 break;
 
-            case Oci8::PARAM_BLOB:
-            case Oci8::PARAM_CLOB:
+            case PDO::PARAM_LOB:
                 $oci_type = $dataType;
 
                 $this->lobsValue[$parameter] = $variable;
@@ -407,7 +409,7 @@ class Oci8Statement extends PDOStatement
     /**
      * Binds a value to a parameter
      *
-     * @param string $parameter Parameter identifier. For a prepared statement
+     * @param string|int $parameter Parameter identifier. For a prepared statement
      *   using named placeholders, this will be a parameter name of the form
      *   :name. For a prepared statement using question mark placeholders, this
      *   will be the 1-indexed position of the parameter.
@@ -416,7 +418,7 @@ class Oci8Statement extends PDOStatement
      *   PDO::PARAM_* constants.
      * @return bool TRUE on success or FALSE on failure.
      */
-    public function bindValue($parameter, $variable, $dataType = PDO::PARAM_STR)
+    public function bindValue(int|string $parameter, mixed $variable, int $dataType = PDO::PARAM_STR): bool
     {
         if (is_array($variable)) {
             $result = true;
@@ -435,7 +437,7 @@ class Oci8Statement extends PDOStatement
      *
      * @return int The number of rows.
      */
-    public function rowCount()
+    public function rowCount(): int
     {
         return oci_num_rows($this->sth);
     }
@@ -450,7 +452,7 @@ class Oci8Statement extends PDOStatement
      *
      * @return string Error code
      */
-    public function errorCode()
+    public function errorCode(): string
     {
         $error = $this->errorInfo();
 
@@ -464,7 +466,7 @@ class Oci8Statement extends PDOStatement
      * @return array Array of error information about the last operation
      *   performed
      */
-    public function errorInfo()
+    public function errorInfo(): array
     {
         $e = oci_error($this->sth);
 
@@ -484,9 +486,9 @@ class Oci8Statement extends PDOStatement
      *
      * @param int $attribute
      * @param mixed $value
-     * @return TRUE on success or FALSE on failure.
+     * @return bool on success or FALSE on failure.
      */
-    public function setAttribute($attribute, $value)
+    public function setAttribute(int $attribute, mixed $value): bool
     {
         $this->options[$attribute] = $value;
 
@@ -499,7 +501,7 @@ class Oci8Statement extends PDOStatement
      * @param int $attribute
      * @return mixed The attribute value.
      */
-    public function getAttribute($attribute)
+    public function getAttribute(int $attribute): mixed
     {
         if (array_key_exists($attribute, $this->options)) {
             return $this->options[$attribute];
@@ -514,7 +516,7 @@ class Oci8Statement extends PDOStatement
      * @return int The number of columns in the statement result set. If there
      *   is no result set, it returns 0.
      */
-    public function columnCount()
+    public function columnCount(): int
     {
         return oci_num_fields($this->sth);
     }
@@ -537,7 +539,7 @@ class Oci8Statement extends PDOStatement
      * @return array An associative array containing the above metadata values
      *   for a single column.
      */
-    public function getColumnMeta($column)
+    public function getColumnMeta(int $column): array
     {
         // Columns in oci8 are 1-based; add 1 if it's a number
         if (is_numeric($column)) {
@@ -560,11 +562,11 @@ class Oci8Statement extends PDOStatement
 
     /**
      * Fetch row from db
-     * @param integer $mode
+     * @param int $mode
      * @param bool $keyToLowercase
      * @return array|bool
      */
-    private function fetchArray($mode, $keyToLowercase)
+    private function fetchArray(int $mode, bool $keyToLowercase): array|bool
     {
         $rs = oci_fetch_array($this->sth, $mode + ($this->returnLobs ? OCI_RETURN_LOBS : 0));
         if ($rs === false) {
@@ -579,7 +581,7 @@ class Oci8Statement extends PDOStatement
          */
         foreach ($rs as $name => $value) {
             $ociFieldIndex = is_int($name) ? $name + 1 : $name;
-            
+
             if (oci_field_type($this->sth, $ociFieldIndex) === 'ROWID') {
                 $rs[$name] = null;
             }
@@ -619,11 +621,11 @@ class Oci8Statement extends PDOStatement
     /**
      * Advances to the next rowset in a multi-rowset statement handle
      *
-     * @throws Oci8Exception
      * @return bool TRUE on success or FALSE on failure.
+     * @throws Oci8Exception
      * @todo Implement method
      */
-    public function nextRowset()
+    public function nextRowset(): bool
     {
         throw new Oci8Exception("nextRowset has not been implemented");
     }
@@ -631,11 +633,11 @@ class Oci8Statement extends PDOStatement
     /**
      * Closes the cursor, enabling the statement to be executed again.
      *
-     * @throws Oci8Exception
      * @return bool TRUE on success or FALSE on failure.
+     * @throws Oci8Exception
      * @todo Implement method
      */
-    public function closeCursor()
+    public function closeCursor(): bool
     {
         return oci_free_statement($this->sth);
     }
@@ -643,35 +645,40 @@ class Oci8Statement extends PDOStatement
     /**
      * Dump a SQL prepared command
      *
-     * @throws Oci8Exception
      * @return bool TRUE on success or FALSE on failure.
+     * @throws Oci8Exception
      * @todo Implement method
      */
-    public function debugDumpParams()
+    public function debugDumpParams(): bool
     {
         throw new Oci8Exception("debugDumpParams has not been implemented");
     }
 
     /**
-     * Binds a column to a PHP variable
+     * Binds a column to a PHP variable.
      *
      * @param mixed $column Number of the column (1-indexed) or name of the
-     *   column in the result set. If using the column name, be aware that the
-     *   name should match the case of the column, as returned by the driver.
-     * @param mixed $variable The PHP to which the column should be bound.
-     * @param int $dataType Data type of the parameter, specified by the
-     *   PDO::PARAM_* constants.
-     * @param int $maxLength A hint for pre-allocation.
-     * @param array $options [optional] Optional parameter(s) for the driver.
-     * @throws Oci8Exception
+     *                         column in the result set. If using the column name, be aware that the
+     *                         name should match the case of the column, as returned by the driver.
+     * @param mixed $variable
+     * @param int $dataType
+     * @param int|null $maxLength A hint for pre-allocation.
+     * @param mixed|null $options
      * @return bool TRUE on success or FALSE on failure.
+     *
      * @todo Implement this functionality by creating a table map of the
      *       variables passed in here, and, when iterating over the values
      *       of the query or fetching rows, assign data from each column
      *       to their respective variable in the map.
      */
-    public function bindColumn($column, &$variable, $dataType = null, $maxLength = -1, $options = null)
+    public function bindColumn(
+        string|int $column,
+        mixed      &$variable,
+        int        $dataType = null,
+        int|null   $maxLength = -1,
+        mixed      $options = null
+    ): bool
     {
-        throw new Oci8Exception("bindColumn has not been implemented");
+        throw new Oci8Exception('bindColumn has not been implemented');
     }
 }

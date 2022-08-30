@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+  php-fpm:
+    build:
+      context: ./docker/php-fpm
+    volumes:
+      - .:/var/www
+    environment:
+      - DOCKER_DEV=1
+      - XDEBUG_ENABLED=1
+    restart: on-failure
